@@ -742,3 +742,45 @@ describe('STRONG_SIGNAL_SCORE_THRESHOLD (used by DecisionEngine strongSignalsOnl
     expect(STRONG_SIGNAL_SCORE_THRESHOLD).toBe(4);
   });
 });
+
+// Smoke-тест: полный путь генерации сигнала с продакшен-дефолтной
+// конфигурацией (DEFAULT_INDICATOR_CONFIG как есть — emaFast=20, emaSlow=50,
+// scoreThreshold=4 — и DEFAULT_SIGNAL_TOGGLES). Существующие тесты используют
+// локальный CONFIG с emaFast=9/emaSlow=21; этот проверяет, что реальные
+// дефолты не регрессируют в "0 сигналов" при наличии strategy-бонуса.
+describe('buildSignal — production default config smoke test', () => {
+  it('produces a strong signal with DEFAULT_INDICATOR_CONFIG + DEFAULT_SIGNAL_TOGGLES + OBC strategy bonus', () => {
+    const candles = makeCandles(true);
+    const snap = makeSnapshot(candles, {
+      rsi: 25, emaFast: 110, emaSlow: 100, macdHistogram: 1, atr: 2,
+      bollingerUpper: 115, bollingerMiddle: 105, bollingerLower: 95,
+    });
+    snap.structure = { trend: 'up', bos: true, choch: false, swingHigh: null, swingLow: null, provisional: false };
+    snap.patterns = [{
+      name: 'order-block-continuation',
+      direction: 'buy',
+      confidence: 1,
+      strength: 'strong',
+      time: 0,
+    }];
+
+    const signal = buildSignal({
+      symbolId: 'BTCUSDT',
+      timeframe: '15m',
+      candles,
+      config: DEFAULT_INDICATOR_CONFIG,
+      activeFeatures: [],
+      snapshot: snap,
+      calibration: null,
+      tick: null,
+      barsToResolve: 5,
+      signalToggles: DEFAULT_SIGNAL_TOGGLES,
+    });
+
+    expect(signal).not.toBeNull();
+    expect(signal!.score).toBeGreaterThanOrEqual(STRONG_SIGNAL_SCORE_THRESHOLD);
+    expect(signal!.strength).toBe('strong');
+    expect(signal!.direction).toBe('buy');
+    expect(signal!.reason).toContain('OBC strategy');
+  });
+});
